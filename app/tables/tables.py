@@ -1,5 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.types import Float, String
+from sqlalchemy.types import Float, String, Boolean
 from sqlalchemy.sql.sqltypes import Integer
 
 from app import db
@@ -13,6 +13,7 @@ class Usuario(db.Model):
     nome = db.Column(String(100))
     email = db.Column(String(300), unique=True)
     senha = db.Column(String)
+    admin = db.Column(Boolean)
 
     
 class Unidade(db.Model):

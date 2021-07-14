@@ -1,3 +1,12 @@
+"""
+file name: app.py 
+Date: 12/07/2021
+Author: Daniel Caria
+email: daniel@dmltech.com.br
+
+"""
+
+# Libs
 import os
 import uuid
 import jwt
@@ -10,6 +19,8 @@ from tables import tables as T
 from werkzeug.security import generate_password_hash, check_password_hash
 from uuid import uuid4
 from dotenv import load_dotenv
+from functools import wraps
+
 
 load_dotenv()
 
@@ -22,6 +33,8 @@ app.config['SECRET_KEY'] = os.getenv('SECRET')
 
 db = SQLAlchemy(app)
 
+# as_dic return list of dictionary of tables from database
+# Params: table = table name, exclude = field exclude of return
 def as_dic(table, exclude):
     data_list = [] 
     for u in table:
@@ -32,8 +45,37 @@ def as_dic(table, exclude):
         data_list.append(data)
     return data_list
 
+
+# token_required valid user and password
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kargs):
+        token = None
+        
+        if 'x-access-token' in request.headers:
+            token = request.headers['x-access-token']
+            
+        if not token:
+            return jsonify({'message': 'Token is missing'}), 401
+        
+        try:
+           data = jwt.decode(token, app.config['SECRET_KEY'],algorithms=["HS256"])
+           current_user = T.Usuario.query.filter_by(public_id=data['public_id']).first()
+        except:
+            return jsonify({'message':'Token is invalid!'}) , 401
+        
+        return f(current_user, *args, **kargs)
+    
+    return decorated
+
+
 @app.route('/')
-def index():
+@token_required
+def index(current_user):
+    
+    if not current_user.admin:
+        return jsonify('Permissão não permitida para esse usuário!')
+    
     users = db.session.query(T.Usuario).all()
     return {"data": as_dic(users, ['senha'])}
 
@@ -45,7 +87,7 @@ def create_user():
         new_user = T.Usuario(public_id = str(uuid4()) , nome=data['nome'], email=data['email'], senha=hashed_password)
         db.session.add(new_user)
         db.session.commit()
-        return jsonify({"message": "New user created!"})
+        return jsonify({"message": "Novo usuário criado!"})
     except Exception as e:
         print(e)
         return jsonify({"error": "Error"})
@@ -55,7 +97,7 @@ def get_user(public_id):
     user = T.Usuario.query.filter_by(public_id=public_id).first()
     
     if not user:
-        return jsonify({'message': 'No user found!'})
+        return jsonify({'message': 'Usuário não encontrado!'})
 
     data = user.__dict__
     data.pop('_sa_instance_state', None)
@@ -77,8 +119,8 @@ def login():
     
     
     if check_password_hash(user.senha, auth.password):
-        token = jwt.encode({'public_id': user.public_id, 'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, app.config['SECRET_KEY'])
-        return jsonify({'token': token.decode('UTF-8')})
+        token = jwt.encode({'public_id': user.public_id, 'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, app.config['SECRET_KEY'], algorithm="HS256")
+        return jsonify({'token': token})
     
     return make_response('Not user found', 401, {'WWWW-Authenticate': 'Basic realm="Login required!'})
  
